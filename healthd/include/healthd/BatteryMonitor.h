@@ -46,6 +46,7 @@ class BatteryMonitor {
 
   private:
     struct healthd_config *mHealthdConfig;
+    int mHealthdUpdateLog;
     Vector<String8> mChargerNames;
     bool mBatteryDevicePresent;
     bool mAlwaysPluggedDevice;

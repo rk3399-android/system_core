@@ -786,6 +786,15 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab, bool wait_for_verity_dev)
             retval = FS_MGR_SETUP_VERITY_SKIPPED;
             LWARNING << "Allow invalid metadata when the device is unlocked";
         }
+
+        /* RK: use the kernel cmdline if set */
+        std::string oem_unlocked;
+        if (fs_mgr_get_boot_config("oem_unlocked", &oem_unlocked)) {
+            if (oem_unlocked == "1") {
+                retval = FS_MGR_SETUP_VERITY_DISABLED;
+                LWARNING << "Allow invalid metadata when the device is unlocked:" << oem_unlocked;
+            }
+        }
         goto out;
     }
 

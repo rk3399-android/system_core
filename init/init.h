@@ -29,6 +29,13 @@ namespace init {
 // TODO: Have an Init class and remove all globals.
 extern const char *ENV[32];
 extern std::string default_console;
+/* IMPORTANT: THE VALUE OF STORAGE_MEDIA MUST BE CONSISTANT WITH UBOOT */
+#define STORAGE_MEDIA_EMMC "storagemedia=emmc"
+#define STORAGE_MEDIA_NAND "storagemedia=nand"
+
+extern bool waiting_for_exec;
+extern int have_console;
+extern std::string console_name;
 extern struct selabel_handle *sehandle;
 extern struct selabel_handle *sehandle_prop;
 

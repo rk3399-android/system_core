@@ -706,12 +706,12 @@ struct fstab *fs_mgr_read_fstab_dt()
  */
 struct fstab *fs_mgr_read_fstab_default()
 {
-    std::string hw;
+    std::string hw, mode;
     std::string default_fstab;
 
     // Use different fstab paths for normal boot and recovery boot, respectively
     if (access("/sbin/recovery", F_OK) == 0) {
-        default_fstab = "/etc/recovery.fstab";
+	    default_fstab = "/etc/recovery.fstab";
     } else if (fs_mgr_get_boot_config("hardware", &hw)) {  // normal boot
         for (const char *prefix : {"/odm/etc/fstab.","/vendor/etc/fstab.", "/fstab."}) {
             default_fstab = prefix + hw;

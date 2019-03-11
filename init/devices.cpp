@@ -101,6 +101,31 @@ static bool FindVbdDevicePrefix(const std::string& path, std::string* result) {
     return true;
 }
 
+/* Given a path that may start with a virtual block device, populate
+ * the supplied buffer with the virtual block device ID and return 0.
+ * If it doesn't start with a virtual block device, or there is some
+ * error, return -1 */
+static bool FindNandDevicePrefix(const std::string& path, std::string* result) {
+    result->clear();
+
+    if (!StartsWith(path, "/devices/virtual")) return false;
+
+    LOG(VERBOSE) << "Find nand device prefix, path is" << path;
+    /* Beginning of the prefix is the initial "block/rknand_" after "/devices/virtual/" */
+    std::string::size_type start = 17;
+
+    /* End of the prefix is one path '/' later, capturing the
+       virtual block partation Name. Example: rknand_system */
+    auto end = path.find('/', start);
+    if (end == std::string::npos) return false;
+
+    auto length = end - start;
+    if (length == 0) return false;
+
+    *result = path.substr(start, length);
+    return true;
+}
+
 Permissions::Permissions(const std::string& name, mode_t perm, uid_t uid, gid_t gid)
     : name_(name), perm_(perm), uid_(uid), gid_(gid), prefix_(false), wildcard_(false) {
     // Set 'prefix_' or 'wildcard_' based on the below cases:
@@ -299,6 +324,7 @@ void SanitizePartitionName(std::string* string) {
 std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uevent) const {
     std::string device;
     std::string type;
+    int isNand = 0;
 
     if (FindPlatformDevice(uevent.path, &device)) {
         // Skip /devices/platform or /devices/ if present
@@ -316,6 +342,9 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
         type = "pci";
     } else if (FindVbdDevicePrefix(uevent.path, &device)) {
         type = "vbd";
+    } else if (FindNandDevicePrefix(uevent.path, &device)) {
+        type = "virtual";
+        isNand = 1;
     } else {
         return {};
     }
@@ -327,13 +356,52 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
     auto link_path = "/dev/block/" + type + "/" + device;
 
     if (!uevent.partition_name.empty()) {
-        std::string partition_name_sanitized(uevent.partition_name);
-        SanitizePartitionName(&partition_name_sanitized);
-        if (partition_name_sanitized != uevent.partition_name) {
-            LOG(VERBOSE) << "Linking partition '" << uevent.partition_name << "' as '"
-                         << partition_name_sanitized << "'";
+        if (isNand == 0) {
+            // Common Emmc devices
+            std::string partition_name_sanitized(uevent.partition_name);
+            SanitizePartitionName(&partition_name_sanitized);
+            if (partition_name_sanitized != uevent.partition_name) {
+                LOG(VERBOSE) << "Linking partition '" << uevent.partition_name << "' as '"
+                             << partition_name_sanitized << "'";
+            }
+            links.emplace_back(link_path + "/by-name/" + partition_name_sanitized);
+
+            // By the way, creat links to /dev/block/by-name/partition_name.
+            links.emplace_back("/dev/block/by-name/" + partition_name_sanitized);
+        } else {
+            // same process the nand device
+            auto nand_slash = uevent.partition_name.rfind('_');
+
+            if (nand_slash == std::string::npos) {
+                // Cannot find 'rknand_partitionName', which means that GPT-partition loaded.
+                LOG(VERBOSE) << "Linking for Nand-GPT devices";
+
+                std::string partition_name_sanitized(uevent.partition_name);
+                SanitizePartitionName(&partition_name_sanitized);
+                if (partition_name_sanitized != uevent.partition_name) {
+                    LOG(VERBOSE) << "Linking partition '" << uevent.partition_name << "' as '"
+                                 << partition_name_sanitized << "'";
+                }
+                links.emplace_back(link_path + "/by-name/" + partition_name_sanitized);
+
+                // By the way, creat links to /dev/block/by-name/partition_name.
+                links.emplace_back("/dev/block/by-name/" + partition_name_sanitized);
+            } else {
+                // Old uboot use /dev/block/rknand_partitionName
+                LOG(VERBOSE) << "Linking for Nand-parameter devices";
+
+                std::string partition_name_sanitized(uevent.partition_name.substr(nand_slash + 1));
+                SanitizePartitionName(&partition_name_sanitized);
+                if (partition_name_sanitized != uevent.partition_name) {
+                    LOG(VERBOSE) << "Linking partition '" << uevent.partition_name << "' as '"
+                                 << partition_name_sanitized << "'";
+                }
+                links.emplace_back("/dev/block/by-name/" + partition_name_sanitized);
+            }
+
+
+            return links;
         }
-        links.emplace_back(link_path + "/by-name/" + partition_name_sanitized);
     }
 
     if (uevent.partition_num >= 0) {
@@ -403,6 +471,11 @@ void DeviceHandler::HandleDeviceEvent(const Uevent& uevent) {
                 int device_id = uevent.minor % 128 + 1;
                 devpath = StringPrintf("/dev/bus/usb/%03d/%03d", bus_id, device_id);
             }
+
+        // add by quectel for mknod /dev/cdc-wdm0
+        } else if (uevent.subsystem == "usbmisc" && !uevent.device_name.empty()) {
+            devpath = "/dev/" + uevent.device_name;
+
         } else {
             // ignore other USB events
             return;

@@ -18,6 +18,11 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_CFLAGS := -Wall -Wextra -Werror -Wunused
+
+ifeq ($(strip $(PRODUCT_HAVE_OPTEE)),true)
+LOCAL_CFLAGS += -DPRODUCT_HAVE_OPTEE
+endif
+
 LOCAL_SRC_FILES := \
 	SoftGateKeeperDevice.cpp \
 	IGateKeeperService.cpp \

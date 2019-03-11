@@ -104,6 +104,25 @@ void DumpState() {
     ActionManager::GetInstance().DumpState();
 }
 
+static int
+unix_read(int  fd, void*  buff, int  len) {
+    int  ret;
+    do { ret = read(fd, buff, len); } while (ret < 0 && errno == EINTR);
+        return ret;
+}
+        
+static int
+proc_read(const char*  filename, char* buff, size_t  buffsize) {
+    int  len = 0;
+    int  fd  = open(filename, O_RDONLY);
+    if (fd >= 0) {
+        len = unix_read(fd, buff, buffsize-1);
+        close(fd);
+    }
+    buff[len > 0 ? len : 0] = 0;
+    return len;
+}
+
 void register_epoll_handler(int fd, void (*fn)()) {
     epoll_event ev;
     ev.events = EPOLLIN;
@@ -483,6 +502,16 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
         strlcpy(qemu, value.c_str(), sizeof(qemu));
     } else if (android::base::StartsWith(key, "androidboot.")) {
         property_set("ro.boot." + key.substr(12), value);
+    } else if (key == "lcd") {
+        std::size_t found = value.find_first_of(",");
+        if (found != std::string::npos) {
+            property_set("ro.boot.panel", value.substr(0, found).c_str());
+            int dpi = atoi(value.substr(found + 1).c_str());
+            if (dpi >= 80 && dpi <= 640)
+                property_set("ro.sf.lcd_density", android::base::StringPrintf("%d", dpi).c_str());
+        } else {
+            property_set("ro.boot.panel", value.c_str());
+        }
     }
 }
 
@@ -499,18 +528,48 @@ static void export_oem_lock_status() {
 }
 
 static void export_kernel_boot_props() {
+    char cmdline[1024];
+    char* s1;
+    char* s3;
+
     struct {
         const char *src_prop;
         const char *dst_prop;
         const char *default_value;
     } prop_map[] = {
-        { "ro.boot.serialno",   "ro.serialno",   "", },
-        { "ro.boot.mode",       "ro.bootmode",   "unknown", },
+       // { "ro.boot.serialno",   "ro.serialno",   "", },
+       // { "ro.boot.mode",       "ro.bootmode",   "unknown", },
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
     };
+
+    proc_read("/proc/cmdline", cmdline, sizeof(cmdline));
+    s1 = strstr(cmdline, STORAGE_MEDIA_EMMC);
+    s3 = strstr(cmdline, "androidboot.oem_unlocked=1");
+
+    if (s3 == NULL) {
+        //oem_unlocked is 0 or not set.
+#ifdef DISABLE_VERIFY
+        property_set("ro.boot.verifiedbootstate","unsupported");
+#else
+        property_set("ro.boot.verifiedbootstate","green");
+#endif
+    } else {
+        property_set("ro.boot.verifiedbootstate","orange");
+    }
+    if (s1 == NULL) {
+        //storagemedia is unknow
+        if (strstr(cmdline, STORAGE_MEDIA_NAND) != NULL) {
+            LOG(INFO) << "Set boot.mode to unknown";
+            property_set("ro.boot.mode", "unknown");
+        }
+    } else {
+        LOG(INFO) << "Set boot.mode to emmc";
+        property_set("ro.boot.mode", "emmc");
+    }
+
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
         property_set(prop_map[i].dst_prop, (!value.empty()) ? value : prop_map[i].default_value);
@@ -1170,7 +1229,7 @@ int main(int argc, char** argv) {
     am.QueueBuiltinAction(mix_hwrng_into_linux_rng_action, "mix_hwrng_into_linux_rng");
 
     // Don't mount filesystems or start core system services in charger mode.
-    std::string bootmode = GetProperty("ro.bootmode", "");
+    std::string bootmode = GetProperty("ro.boot.mode", "");
     if (bootmode == "charger") {
         am.QueueEventTrigger("charger");
     } else {

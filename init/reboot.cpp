@@ -290,6 +290,7 @@ static UmountStat UmountPartitions(std::chrono::milliseconds timeout) {
                         [](auto& entry) { return entry.Umount(false); })) {
             sync();
         }
+	sync();
         for (auto& entry : block_devices) {
             entry.Umount(timeout == 0ms);
         }

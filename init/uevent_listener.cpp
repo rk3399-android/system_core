@@ -47,6 +47,13 @@ static void ParseEvent(const char* msg, Uevent* uevent) {
         } else if (!strncmp(msg, "DEVPATH=", 8)) {
             msg += 8;
             uevent->path = msg;
+            /* It's just an workaround, because we couldn't
+               find "PARTNAME=" from uevent on rk nand device */
+            if(!strncmp(msg, "/devices/virtual/block/rknand_", 30)) {
+                // Only save partition_name, not include 'rknand_'
+                msg += 30;
+                uevent->partition_name = msg;
+            }
         } else if (!strncmp(msg, "SUBSYSTEM=", 10)) {
             msg += 10;
             uevent->subsystem = msg;

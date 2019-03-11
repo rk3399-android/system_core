@@ -32,6 +32,10 @@ ifeq ($(TARGET_USER_MODE_LINUX), true)
     init_cflags += -DUSER_MODE_LINUX
 endif
 
+ifeq ($(BUILD_WITH_GO_OPT), true)
+    init_cflags += -DDISABLE_VERIFY=1
+endif
+
 init_cflags += \
     $(init_options) \
     -Wall -Wextra \

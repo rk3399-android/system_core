@@ -294,7 +294,7 @@ bool BatteryMonitor::update(void) {
 
     logthis = !healthd_board_battery_update(&props);
 
-    if (logthis) {
+    if (logthis && mHealthdUpdateLog) {
         char dmesgline[256];
         size_t len;
         if (props.batteryPresent) {
@@ -331,7 +331,7 @@ bool BatteryMonitor::update(void) {
                  props.chargerUsbOnline ? "u" : "",
                  props.chargerWirelessOnline ? "w" : "");
 
-        KLOG_WARNING(LOG_TAG, "%s\n", dmesgline);
+        KLOG_INFO(LOG_TAG, "%s\n", dmesgline);
     }
 
     healthd_mode_ops->battery_update(&props);
@@ -659,6 +659,11 @@ void BatteryMonitor::init(struct healthd_config *hc) {
         mBatteryFixedCapacity = FAKE_BATTERY_CAPACITY;
         mBatteryFixedTemperature = FAKE_BATTERY_TEMPERATURE;
     }
+
+    if (property_get("persist.sys.healthd.log", pval, NULL) > 0)
+        mHealthdUpdateLog = atoi(pval);
+    else
+        mHealthdUpdateLog = 0;
 }
 
 }; // namespace android

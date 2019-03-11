@@ -57,8 +57,13 @@ class GateKeeperProxy : public BnGateKeeperService {
 public:
     GateKeeperProxy() {
         clear_state_if_needed_done = false;
-        hw_device = IGatekeeper::getService();
 
+#ifdef PRODUCT_HAVE_OPTEE
+        hw_device = IGatekeeper::getService();
+#else
+        /*get hardware GateKeeperDevice faild no blocked*/
+        hw_device = IGatekeeper::tryGetService();
+#endif
         if (hw_device == nullptr) {
             ALOGW("falling back to software GateKeeper");
             soft_device.reset(new SoftGateKeeperDevice());
